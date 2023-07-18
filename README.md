@@ -13,7 +13,7 @@ For example, in May 2022, Alice Smith wanted to run a proteomics experiment in a
 
 First, she should create a personal folder in `C:/Xcalibur/data` as `AliceSmith`.
 
-Second, in her personal folder, she should create a project folder for this experiment called `ABRKT2440_May2022`. 
+Second, in her personal folder, she should create a project folder for this experiment called `ABRKT2440_AS_May2022`. 
 
 ### 2. Create a metadata table
 This should be the most important document that make everyone including yourself to understand the experimental design. Each project should have its own metadata table. It should be informative, and precisely labeled. 
