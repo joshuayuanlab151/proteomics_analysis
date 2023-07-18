@@ -1,6 +1,6 @@
 # proteomics_analysis
 
-Back up your proteomics data every time you run an experiment!
+Back up your proteomics data every time you run an experiment on hard drive!
 
 ## Data management
 ### 1. Create a project folder for each experiment you run
