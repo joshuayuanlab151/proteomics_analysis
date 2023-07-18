@@ -49,11 +49,12 @@ We now transfer the data to the HPRC for database search, QC, and analysis. You 
 ### 6. When finishing an experiment
 After database search and basic QC on the results, you should decide whether more samples needed. If yes, add samples in the metadata table and run repeats. If no, follow the below process to back up data on the lab hard drive. **Double-check your metadata table matches all the data files in an experiment**
 
-## Data storage
+## Data storage (designated person)
 This step should only happen when you are satisfied with all your data in an experiment. Transfer the data from local computer to the hard drive. 
 * If this is the first time you back up your data on the hard drive, transfer the entire personal folder to the hard drive.
 * If you have backed up your data before, only transfer the new project folder to the hard drive.
 
+
 **Important note! To make sure the drive is used efficiently**
   * Only back up raw data and metadata table for each experiment. Delete all the intermediate files generated from the analysis. Delete proteome databases. You can keep one method file for each experiment.
-  * Once the data is backed up, delete the project folder from the local computer. We don't keep the same data in both local and hard drives, to avoid confusion. 
+  * Once the data is backed up, delete the project folder from the local computer after three months. We will leave the data in the computer for a short period but we don't keep the same data in both local and hard drives for long term storage.  
