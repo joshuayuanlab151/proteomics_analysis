@@ -17,3 +17,20 @@ This should be the most important document that make everyone including yourself
 It can be saved into any of the file formats of your choice. 
 
 For example, Alice had an experiment with three replicates of each control and treatment group, she should have a metadata table like this:
+|Date|Treatment | Replicate | Organizm| Data file name|Note|    
+|--- | --- | --- | ---|--- | ---|        
+|20220501| control | 1 | psudomonas| KT2440_ctrol1_0501|---|      
+|20220503| control | 2 | psudomonas| KT2440_ctrol2_0503|---|      
+|20220504| control | 3 | psudomonas| KT2440_ctrol3_0504|---|      
+|20220505| kanamycin | 1 | psudomonas| KT2440_kan1_0505|---|      
+|20220507| kanamycin | 2 | psudomonas| KT2440_kan2_0507|---|      
+|20220509| kanamycin | 3 | psudomonas| KT2440_kan3_0509|---|      
+
+If you need to repeat the run of some samples, please make notes, like:   
+|Date|Treatment | Replicate | Organizm| Data file name|Note|    
+|--- | --- | --- | ---|--- | ---|        
+|202205010| control | 4 | psudomonas| KT2440_ctrol4_05010|repeat control1|      
+|202205013| control | 5 | psudomonas| KT2440_ctrol5_05013|repeat control2|      
+
+This should be created and stored in the project folder before you start running any of your samples. 
+### 
