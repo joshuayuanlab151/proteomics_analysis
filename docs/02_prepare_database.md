@@ -73,7 +73,7 @@ cosmetic gap.
 
 `02_build_database_index.sh` handles this **automatically** too: it
 appends the bundled
-[`reference_data/common_contaminants.fasta`](../reference_data/common_contaminants.fasta)
+[common proteomics comtaminations](https://zenodo.org/records/15115102)
 (the standard 116-sequence cRAP database) to your database before
 indexing, every time. Again, nothing for you to do — the script logs how
 many contaminant sequences it added.
