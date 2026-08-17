@@ -33,32 +33,50 @@ grep -c '>' your_database.fasta
 - Ask your PI/instructor if there's a lab-standard database for your project
   (e.g. a custom genome annotation).
 
-## 2.3 (Optional) remove redundant sequences
+## 2.3 Remove redundant sequences (required)
 
-If your database has many near-duplicate sequences (common with some genome
-annotations), you can collapse them with CD-HIT before searching, which
-speeds up the search and simplifies protein-level results:
+Exact-duplicate sequences in a database aren't harmless — they make the
+search engine and downstream tools double-count/misreport peptides that
+are shared across the duplicate entries, which distorts protein-level
+results. `02_build_database_index.sh` handles this **automatically**, for
+every run, before indexing: it collapses any sequences that are exactly
+identical to each other down to one entry each, using a small built-in
+`awk` step (no separate tool to install, and it works the same on the
+Windows track). You don't need to do anything yourself — the script logs
+how many duplicates it removed each time it runs.
+
+If your database has many *near*-identical (not exactly identical)
+sequences — common with some genome annotations, less common with
+UniProt/Swiss-Prot downloads — the built-in step won't catch those, since
+that requires real sequence-similarity clustering. On Mac/Linux only, you
+can optionally run [CD-HIT](https://github.com/weizhongli/cdhit) yourself
+first for that case (CD-HIT has no Windows build):
 
 ```bash
 conda install -c bioconda cd-hit
-cd-hit -c 1.0 -n 5 -i your_input_proteome.fasta -o your_proteome_dedup.fasta -d 0
+cd-hit -c 0.95 -n 5 -i your_input_proteome.fasta -o your_proteome_dedup.fasta -d 0
 ```
 
-`-c 1.0` keeps only sequences that are exactly identical to each other
-merged; lower it (e.g. `-c 0.95`) to also collapse near-identical sequences.
+then pass `your_proteome_dedup.fasta` to `02_build_database_index.sh`
+instead of your original file — it'll still do the exact-duplicate pass
+and contaminant append on top of that.
 
-## 2.4 (Optional) add common contaminants
+## 2.4 Add common contaminants (required)
 
-Lab contaminants (human keratin, trypsin itself, etc.) commonly appear in
-samples and can otherwise get misassigned to real proteins. Many labs
-append a standard contaminant FASTA (e.g. the
-[MaxQuant contaminants list](https://www.maxquant.org/) or the
-[Global Proteome Machine common contaminants](https://www.thegpm.org/crap/))
-to their database:
+Lab contaminants (human keratins, trypsin itself, BSA, etc.) are present
+in essentially every real mass spec sample, regardless of what you're
+actually studying, from sample handling and prep. If they're not in your
+search database, those peptides don't just go unidentified — they get
+**misassigned to whatever real protein in your database happens to look
+similar**, which is a real source of incorrect identifications, not a
+cosmetic gap.
 
-```bash
-cat your_proteome.fasta contaminants.fasta > combined_database.fasta
-```
+`02_build_database_index.sh` handles this **automatically** too: it
+appends the bundled
+[`reference_data/common_contaminants.fasta`](../reference_data/common_contaminants.fasta)
+(the standard 116-sequence cRAP database) to your database before
+indexing, every time. Again, nothing for you to do — the script logs how
+many contaminant sequences it added.
 
 ## 2.5 Decoys — handled automatically, don't do this yourself
 
@@ -74,5 +92,13 @@ command. Just point it at your real (target-only) FASTA.
 with this repo so you can run the whole pipeline end-to-end quickly before
 using it on real, larger data. It is **not** a real study database — don't
 use it for actual research.
+
+Like any other database, it still goes through 2.3/2.4 automatically —
+`02_build_database_index.sh` actually indexes 22 + 116 = 138 sequences for
+it (the 22 real proteins plus the full contaminants list), even though the
+file on disk has 22. If you're ever counting proteins with
+`grep -c '>' your_database.fasta` (2.1) to sanity-check something, count
+against the `..._prepared.fasta` file next to your index output, not your
+original input file, to see what was actually searched.
 
 Next: [3. Converting RAW files to mzML](03_convert_raw_to_mzml.md)
