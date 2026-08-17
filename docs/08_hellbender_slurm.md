@@ -113,11 +113,62 @@ module load miniconda3
 exit    # leave the interactive session when done
 ```
 
+### Why crux needs a fallback on Hellbender specifically
+
+`00_setup_environment.sh` normally installs crux by downloading a
+prebuilt binary from GitHub — fast, and no conda solving needed. That
+binary needs glibc 2.29+, but Hellbender's OS (AlmaLinux 8.9) ships glibc
+2.28 (check your own node with `ldd --version`), one minor version short.
+This is confirmed working end-to-end on Hellbender as of this writing,
+not just a theoretical fix:
+
+1. The script checks your system's glibc version *before* downloading
+   anything (via `ldd --version`), so on Hellbender it skips the doomed
+   direct download entirely rather than wasting time on it.
+2. It installs crux from conda instead, pinned to a specific bioconda
+   build (`crux-toolkit=4.1=h503566f_3`) verified — by inspecting the
+   actual GLIBC/GLIBCXX symbol versions compiled into that binary — to
+   need only glibc 2.14, comfortably under Hellbender's 2.28. (Bioconda's
+   *newest* crux build, 4.2, has the same glibc-2.29 problem as the direct
+   download and does **not** work here; 4.1 does. Both were released the
+   same day with an identical CLI, so this doesn't cost you anything
+   functionally.)
+3. It replaces `software/crux/bin/crux` with a small wrapper script that
+   activates that conda environment and runs the real `crux` — and that
+   wrapper loads the `miniconda3` module itself if `conda` isn't already
+   on `PATH` in whatever shell calls it. So **you never need to manually
+   run `module load miniconda3` / `conda activate crux-fallback` before
+   using crux** — just call `software/crux/bin/crux ...` (or run the
+   pipeline scripts, which all call it the same way) directly, in any
+   shell, including inside a SLURM job. `00_setup_environment.sh`'s final
+   "Setup complete" message tells you which backend ended up installed.
+
+If setup ever gets interrupted partway, or you want to force a clean
+reinstall of just crux, delete it and re-run:
+```bash
+rm -f $HOME/data/proteomics_pipeline_course/mac_linux/software/crux/bin/crux
+./00_setup_environment.sh
+```
+
+On the rare chance the conda fallback fails for some other reason on your
+account, the script automatically tries running crux inside a
+Singularity/Apptainer container next (needs Singularity/Apptainer enabled
+for your account — Hellbender describes this as "limited support ... for
+advanced users"; if missing, email `itrss-support@umsystem.edu`), and as
+a last resort prints instructions for compiling crux from source (a real,
+slow build, and on Hellbender specifically may be blocked entirely if
+`svn` isn't available even as a module — see the SLURM template in the
+next section). See
+[doc 7](07_troubleshooting.md#crux-libm-so6-version-glibc_229-not-found-common-on-hellbender--older-hpc-linux)
+for the full details on all of this.
+
 ## 8.6 Using the SLURM templates
 
 `mac_linux/scripts/slurm/` has one `.slurm` file per pipeline step, plus
 `submit_all.sh` which submits all of them as a **dependency chain** (each
-step only starts after the previous one succeeds):
+step only starts after the previous one succeeds). There's also a
+standalone `build_crux_from_source.slurm`, not part of that chain — only
+needed if doc 8.5's crux fallbacks both failed (see above).
 
 ```bash
 cd $HOME/data/proteomics_pipeline_course/mac_linux/scripts/slurm
