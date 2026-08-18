@@ -2,10 +2,11 @@
 
 A back-to-back command reference for demoing the identification pipeline
 by hand on Linux: CD-HIT → build the search database → ThermoRawFileParser
-→ crux tide-search → percolator → protein/gene list. Every command and log
-excerpt below was actually run against real test data
-(`PSM_BL.fasta`, one real `.raw` file) while writing this doc — not
-guessed.
+→ crux tide-search → percolator → protein/gene list → spectral counts.
+Every command and log excerpt below was actually run against real test
+data (`PSM_BL.fasta`, one real `.raw` file) while writing this doc — not
+guessed. MS1-intensity-based quantification (moFF) is a separate, later
+topic, not covered here.
 
 ## Prerequisites
 
@@ -370,6 +371,81 @@ awk -F'\t' 'NR>1 && $4<=0.01 {print $7}' search_out/percolator.target.psms.txt \
 
 ---
 
+## Step 7: Spectral counting (protein-level abundance, no MS1 needed)
+
+**Why:** Step 6 gets you a protein *list*. `crux spectral-counts` goes one
+step further — a lightweight per-protein abundance estimate based purely
+on how many PSMs/spectra map to each protein, no MS1 peak extraction
+required. It's a real crux subcommand, not something hand-rolled with
+awk, and it applies the FDR threshold itself rather than you filtering by
+hand first. This is not the same as MS1-intensity-based quantification
+(moFF, covered separately) — spectral counting is coarser, but it's fast
+and needs nothing beyond what you already have from step 5.
+
+```bash
+"$CRUX" spectral-counts \
+    --measure NSAF \
+    --threshold 0.1 \
+    --protein-database your_database_final.fasta \
+    --overwrite T \
+    --output-dir spectral_counts \
+    search_out/percolator.target.psms.txt
+```
+
+**Parameters:**
+- `--measure NSAF` — Normalized Spectral Abundance Factor: each protein's
+  spectral count divided by its length, then normalized so all proteins'
+  values sum to 1 — this makes long proteins (which naturally rack up more
+  PSMs just from having more possible peptides) comparable to short ones.
+  `--measure RAW` gives plain spectral counts instead (no length
+  normalization, and doesn't need `--protein-database` at all) if you just
+  want the simplest possible number. `dNSAF`, `SIN`, and `EMPAI` are other
+  supported measures — see `crux spectral-counts` (no arguments) for the
+  full list.
+- `--threshold 0.1` — the q-value cutoff, applied internally (same idea as
+  step 6's `--max-q-value`, but crux does the filtering for you here).
+  Match this to whatever FDR you actually want to report at (e.g. `0.01`
+  for the 1% publication standard).
+- `--protein-database` — required for any length-normalized measure
+  (`NSAF`/`dNSAF`/`SIN`/`EMPAI`); not needed for `RAW`. Use the same
+  `..._final.fasta` you built in step 2 (dedup + contaminants) — it needs
+  to match what you actually searched against.
+
+**Check:**
+```bash
+tail -8 spectral_counts/spectral-counts.log.txt
+cat spectral_counts/spectral-counts.target.txt
+```
+Real output on this repo's test data (single-file run):
+```
+INFO: Number of matches: 532
+INFO: Number of matches passed the threshold: 10
+INFO: Number of peptides: 10
+INFO: Number of proteins: 10
+INFO: Return Code:0
+```
+```
+protein id	NSAF
+sp|CYC_HORSE|	0.28302339
+sp|NQO2_HUMAN|	0.12920633
+sp|CAH2_BOVIN|	0.1142979
+...
+```
+The `Number of proteins: N` line in the log is your final protein count —
+cross-check it against `wc -l spectral_counts/spectral-counts.target.txt`
+(subtract 1 for the header) as a sanity check; they should match. If they
+don't, or `Return Code` isn't `0`, something's wrong — check the log for
+the actual error rather than trusting the output file blindly.
+
+(Optional: `--parsimony simple` or `--parsimony greedy` collapses proteins
+whose identified peptides are a subset of/shared with a longer protein
+into one group, and adds a `parsimony rank` column — worth knowing about
+for real studies with a large database where the same peptide often maps
+to multiple homologous proteins; skip it for a small demo database like
+this one, where it won't do much.)
+
+---
+
 ## Full quick-reference (all commands, no explanation)
 
 ```bash
@@ -396,4 +472,9 @@ mkdir -p search_out
 awk -F'\t' 'NR>1 && $4<=0.1 {print $7}' search_out/percolator.target.psms.txt \
     | tr ',' '\n' | sort -u > confident_proteins.txt
 wc -l confident_proteins.txt
+
+"$CRUX" spectral-counts --measure NSAF --threshold 0.1 \
+    --protein-database your_database_final.fasta \
+    --overwrite T --output-dir spectral_counts \
+    search_out/percolator.target.psms.txt
 ```
