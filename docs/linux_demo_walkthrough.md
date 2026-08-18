@@ -3,23 +3,16 @@
 A back-to-back command reference for demoing the identification pipeline
 by hand on Linux: CD-HIT → build the search database → ThermoRawFileParser
 → crux tide-search → percolator → protein/gene list. Every command and log
-excerpt below was actually run against this repo's real test data
+excerpt below was actually run against real test data
 (`PSM_BL.fasta`, one real `.raw` file) while writing this doc — not
 guessed.
 
-This is a manual, step-by-step version of what `mac_linux/scripts/`
-automates for you. Use this for explaining/demoing the mechanics; use the
-scripts in `mac_linux/scripts/` for actually running real studies (they
-also handle exact-duplicate removal without needing CD-HIT, for
-Windows-track parity — see `docs/02_prepare_database.md`).
-
 ## Prerequisites
 
-Assumes crux and ThermoRawFileParser are already installed (via
-`mac_linux/scripts/00_setup_environment.sh`, or manually — see
-`docs/01_install_software.md`), and the `proteomics` conda environment
-exists. CD-HIT is not part of that environment by default — install it
-once:
+Assumes crux, ThermoRawFileParser, and a conda environment with `lxml`
+are already installed, and that you're working inside that conda
+environment. CD-HIT is not part of that environment by default — install
+it once:
 
 ```bash
 conda activate proteomics
@@ -32,7 +25,7 @@ Set these once per session so every command below can just be copy-pasted:
 export CRUX=/path/to/mac_linux/software/crux/bin/crux
 export TRFP=/path/to/mac_linux/software/ThermoRawFileParser/ThermoRawFileParser
 export CONTAM=/path/to/reference_data/common_contaminants.fasta
-export WORKDIR=/path/to/demo_run
+export WORKDIR=~/demo_run
 mkdir -p "$WORKDIR" && cd "$WORKDIR"
 ```
 
@@ -47,9 +40,8 @@ get indexed by crux as part of the actual protein sequences and end up
 embedded inside tryptic peptides at line-wrap boundaries — this silently
 corrupts every downstream tab-delimited output in a way that's invisible
 until something tries to parse a field expecting a clean value. Confirmed
-by hitting this for real while building this pipeline (see
-`docs/07_troubleshooting.md`). CD-HIT does **not** strip this for you —
-verified: it passes `\r` straight through.
+by hitting this for real while building this pipeline. CD-HIT does
+**not** strip this for you — verified: it passes `\r` straight through.
 
 ```bash
 tr -d '\r' < your_database.fasta > your_database_clean.fasta
@@ -62,12 +54,13 @@ grep -c $'\r' your_database_clean.fasta   # should print 0
 
 ---
 
-## Step 1: CD-HIT — collapse near-duplicate sequences
+## Step 1: CD-HIT — collapse near-identical sequences
 
-**Why:** Near-duplicate protein entries (common in some genome
-annotations) make the search engine double-count/misreport shared
-peptides. Real result on `PSM_BL.fasta` (22 sequences): 2 collapsed as
-95%-identical, 20 remain.
+**Why:** Duplicate/near-duplicate protein entries make the search engine
+double-count/misreport shared peptides. Real result on `PSM_BL.fasta` (22
+sequences): 2 collapsed at `-c 0.95`, 20 remain (at the stricter `-c 1.0`,
+exact-matches-only, 0 get removed — this particular database has no
+100%-identical entries, only two 95%+ near-identical ones).
 
 ```bash
 cd-hit -c 0.95 -n 5 -d 0 -M 0 -T 0 \
@@ -76,12 +69,29 @@ cd-hit -c 0.95 -n 5 -d 0 -M 0 -T 0 \
 ```
 
 **Parameters:**
-- `-c 0.95` — identity threshold to cluster together (95%). Use `-c 1.0`
-  for exact-duplicates-only; lower (e.g. `0.9`) to collapse more
-  aggressively for very redundant genome annotations.
-- `-n 5` — word size CD-HIT requires for `-c` in the 0.9-0.95 range (CD-HIT
-  ties word size to identity threshold; see `cd-hit -h` for the mapping —
-  wrong `-n` for a given `-c` is rejected outright, not silently wrong).
+- `-c 0.95` — identity threshold to cluster together: sequences that are
+  ≥95% identical get merged into one. (CD-HIT's own documented default is
+  `-c 0.9`, looser than this — worth knowing if you ever omit `-c` by
+  accident. Raise it to `-c 1.0` for exact-duplicates-only; lower it for
+  more aggressive collapsing, common with messy genome annotations.)
+- `-n 5` — word length for CD-HIT's clustering *heuristic*, not the
+  identity calculation itself. CD-HIT doesn't align every pair of
+  sequences directly (too slow for large databases) — it first indexes
+  every sequence by all its overlapping length-`n` substrings ("words":
+  at `n=5`, every 5-amino-acid stretch), and only runs a real alignment on
+  pairs that already share enough of those words to *possibly* meet the
+  `-c` threshold. Two sequences that are ≥95% identical are mathematically
+  guaranteed to share long exact-match stretches, so a 5-length word is
+  short enough to always find that overlap; at a much lower `-c` (more
+  differences allowed, so exact-match stretches get shorter and rarer),
+  you need a *shorter* word (`-n` 2-4) or the pre-filter would wrongly
+  throw out real matches before they're ever aligned. So `-n` doesn't
+  change *which* sequences end up in a cluster (`-c` and the real
+  identity computation decide that) — it only changes how CD-HIT
+  efficiently narrows down candidate pairs to check. That's also why
+  CD-HIT enforces the pairing (`cd-hit -h` for the full `-c`→`-n` table)
+  and rejects a mismatched combination outright rather than silently
+  giving you a wrong/incomplete clustering.
 - `-d 0` — keep the full original header in the output (default truncates
   at the first space, which drops the protein description/`GN=` gene tag
   you'll likely want later).
@@ -91,8 +101,26 @@ cd-hit -c 0.95 -n 5 -d 0 -M 0 -T 0 \
 ```bash
 grep -c '^>' your_database_clean.fasta   # sequences going in
 grep -c '^>' your_database_dedup.fasta   # sequences coming out
-head -20 your_database_dedup.fasta.clstr # which sequences got merged, and with what
+
+# Show only clusters that actually merged >1 sequence (most clusters are
+# singletons and aren't interesting here)
+awk '/^>Cluster/{if(block!="" && n>1) print block; block=$0"\n"; n=0; next}
+     {block=block $0"\n"; n++}
+     END{if(n>1) print block}' your_database_dedup.fasta.clstr
 ```
+Real output on `PSM_BL.fasta`:
+```
+>Cluster 11
+0	221aa, >sp|B5A7N4|XYN2_TRIHA... *
+1	190aa, >sp|P48793|XYN_TRIHA... at 99.47%
+
+>Cluster 12
+0	147aa, >sp|P69892|HBG2_HUMAN... *
+1	147aa, >sp|P69891|HBG1_HUMAN... at 99.32%
+```
+(the line ending in `*` is the cluster's representative sequence, kept in
+the output; other lines were merged into it and dropped)
+
 CD-HIT also prints a summary to stdout ending in `program completed !` —
 if that line is missing, something failed; scroll up for the actual error.
 
@@ -133,7 +161,7 @@ cat your_database_dedup.fasta "$CONTAM" > your_database_final.fasta
 
 **Check:**
 ```bash
-tail -20 tide_index_log/tide-index.log
+tail -20 tide_index_log/tide-index.log.txt
 ```
 Look for:
 - `Cleaved N protein sequences in total` — should equal your combined
@@ -176,10 +204,12 @@ move on, don't try to force past it.
 A handful of "no m/z data" warnings among thousands of spectra is normal
 (empty MS2 scans on low-signal precursors). If it's a large fraction,
 check *which MS level* is affected before assuming something's broken —
-see `mac_linux/scripts/check_mzml_ms_levels.py` and
-`docs/07_troubleshooting.md` for why a flat percentage alone can be
-misleading (real example there: a sharp mid-run dropout, not "always
-bad").
+a high empty-MS2 rate is usually still fine, but a high empty-**MS1**
+rate is worth a closer look at *where in the run* (by retention time)
+those empty scans fall: clustered at the very start/end of the run is
+plausibly dead time (benign); a contiguous block in the middle, clean
+before and after, points at a real, temporary acquisition event (e.g. an
+electrospray dropout) rather than something to shrug off.
 
 ---
 
@@ -206,9 +236,41 @@ to search them together into one combined `tide-search.txt`.
 - `--precursor-window 50` — ±50 ppm precursor mass tolerance. Widen for
   lower-resolution instruments, narrow for high-res Orbitrap/tribrid data
   if you know your instrument's real mass accuracy is tighter.
-- `--mz-bin-width 1.0005079` — standard fragment-ion bin width tuned to
-  the mass of a proton; the conventional default for high-res MS2, rarely
-  needs changing.
+- `--mz-bin-width 1.0005079` — fragment-ion bin width used to discretize
+  spectra before scoring. **Get this backwards and it's easy to do, so
+  double-check:** crux's own `--help` text says *"For low resolution ion
+  trap ms/ms data 1.0005079 and for high resolution ms/ms 0.02 is
+  recommended. Default = 0.02."* — i.e. `1.0005079` is the **low-res**
+  value, and crux's actual default is the **high-res** one (`0.02`), not
+  `1.0005079`. `1.0005079` is used here because this particular test
+  dataset really is low-resolution ion trap data (CID fragmentation, not
+  HCD) — confirmed directly from the mzML, see the callout below, don't
+  just assume. If your own data is high-resolution (Orbitrap/HCD), use
+  `--mz-bin-width 0.02` instead — using the low-res bin width on
+  high-resolution data throws away real discriminating power in the
+  search. Crux can also estimate this for you automatically:
+  `--auto-mz-bin-width warn` (falls back to the default if estimation
+  fails) or `fail` (errors instead of silently guessing wrong).
+
+**How to tell high- vs. low-resolution from an mzML file, without
+guessing:** ThermoRawFileParser embeds the instrument's own per-scan
+"filter string" (cvParam accession `MS:1000512`) — Thermo's own scan
+description, straight from the instrument. `FTMS` = Orbitrap/FT
+(high-res); `ITMS` = ion trap (low-res). Check across the whole file, not
+just one scan, since some methods deliberately mix them (e.g. high-res
+MS1 survey scans + fast low-res ion-trap MS2 for speed):
+```bash
+grep -o 'accession="MS:1000512" value="[^"]*"' your_run.mzML \
+    | sed 's/.*value="//;s/"$//' | cut -c1-4 | sort | uniq -c
+```
+Real output on this repo's test data — every single scan, MS1 and MS2
+alike, is `ITMS`:
+```
+    5574 ITMS
+```
+(a mixed-mode file would show both `FTMS` and `ITMS` counts; match your
+`--mz-bin-width` to whichever one dominates your MS2 scans specifically,
+since that's what's actually being bin-discretized for scoring)
 
 **Check:**
 ```bash
