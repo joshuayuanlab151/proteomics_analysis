@@ -32,7 +32,7 @@ Set these once per session so every command below can just be copy-pasted:
 export CRUX=/path/to/mac_linux/software/crux/bin/crux
 export TRFP=/path/to/mac_linux/software/ThermoRawFileParser/ThermoRawFileParser
 export CONTAM=/path/to/reference_data/common_contaminants.fasta
-export WORKDIR=~/demo_run
+export WORKDIR=/path/to/demo_run
 mkdir -p "$WORKDIR" && cd "$WORKDIR"
 ```
 
