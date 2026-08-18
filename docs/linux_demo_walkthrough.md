@@ -26,7 +26,7 @@ Set these once per session so every command below can just be copy-pasted:
 export CRUX=/path/to/mac_linux/software/crux/bin/crux
 export TRFP=/path/to/mac_linux/software/ThermoRawFileParser/ThermoRawFileParser
 export CONTAM=/path/to/reference_data/common_contaminants.fasta
-export WORKDIR=~/demo_run
+export WORKDIR=/path/to/demo_run
 mkdir -p "$WORKDIR" && cd "$WORKDIR"
 ```
 
@@ -138,7 +138,7 @@ sequences, the standard cRAP database) is bundled in this repo for
 exactly this.
 
 ```bash
-cat your_database_dedup.fasta "$CONTAM" > your_database_final.fasta
+cat your_database_dedup.fasta common_contaminants.fasta > your_database_final.fasta
 
 "$CRUX" tide-index \
     --decoy-format peptide-reverse \
