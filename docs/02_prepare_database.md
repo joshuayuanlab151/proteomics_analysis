@@ -30,6 +30,7 @@ grep -c '>' your_database.fasta
   (download the reviewed "Swiss-Prot" proteome for your organism).
 - **Plant genomes**: [Phytozome](https://phytozome-next.jgi.doe.gov/)
 - **Fungal genomes**: [MycoCosm](https://mycocosm.jgi.doe.gov/mycocosm/home)
+- Integrated Microbial Genome database [IMG](https://img.jgi.doe.gov/)
 - Ask your PI/instructor if there's a lab-standard database for your project
   (e.g. a custom genome annotation).
 
