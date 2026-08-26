@@ -30,6 +30,36 @@ For many files or large files, this step can take a while (it's I/O and
 CPU bound) — let it run in the background or overnight if needed; there's
 no need to babysit it.
 
+### ThermoRawFileParser can also batch a whole folder itself
+
+`01_convert_raw_to_mzml.sh` deliberately calls ThermoRawFileParser once
+per `.raw` file (`-i=<file> -o=<dir>`) rather than pointing it at the
+whole folder at once, even though ThermoRawFileParser supports that too
+via `-d=<input_dir> -o=<output_dir>` (`--input_directory`/
+`--output_directory` in `ThermoRawFileParser --help`). The one-call-per-
+file loop is intentional, not an oversight, because it gives you three
+things directory mode doesn't:
+- **Skips files already converted** on a rerun (checks if the `.mzML`
+  already exists first) — directory mode reprocesses everything every
+  time.
+- **One bad file doesn't block the rest, and you can tell which one
+  failed from the exit code alone.** Directory mode also keeps
+  converting past a bad file (verified: a "still being acquired" file
+  doesn't stop the rest of the batch), but its own *process* exit code
+  stays `0` even when a file inside failed — you'd have to parse the
+  combined log text for `ERROR` lines instead of just checking success/
+  failure per file.
+- **A separate log file per input** (`<name>.convert.log`) — directory
+  mode interleaves every file's output into one stream, making it harder
+  to hand a student the specific log for the specific file that failed.
+
+If you're ever converting a large, one-off batch by hand outside this
+script and don't need any of the above, directory mode is a legitimate
+shortcut:
+```bash
+./software/ThermoRawFileParser/ThermoRawFileParser -d=~/my_project/raw -o=~/my_project/mzML -f=2
+```
+
 ## 3.3 Sanity-check the output
 
 ```bash

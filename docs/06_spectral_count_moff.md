@@ -13,7 +13,9 @@ moFF needs a specific tab-delimited format (`peptide`, `prot`, `mod_peptide`,
 `rt`, `mz`, `mass`, `charge`) — crux's percolator output isn't in that
 format, and (depending on your crux version) may or may not include a
 usable retention time column, but never includes m/z or mass. A converter
-script bridges the two automatically:
+script bridges the two automatically — **and this is also where the FDR
+filter actually gets applied** (see doc 5.1/5.3: `percolator.target.psms.txt`
+itself contains every target PSM, not just confident ones):
 
 ```bash
 conda activate proteomics    # needs lxml, which lives in this env, not moff
@@ -21,16 +23,22 @@ python 05_percolator_to_moff.py \
     --percolator search_out/percolator.target.psms.txt \
     --tide-search search_out/tide-search.txt \
     --mzml-dir /path/to/mzML \
-    --out-dir moff_input
+    --out-dir moff_input \
+    --max-q-value 0.1
 ```
 
-(Run this from inside `mac_linux/scripts/` or `windows/scripts/`.)
+`--max-q-value` (default `0.1`) is the actual FDR threshold used —
+lower it (e.g. `0.01` for the 1% FDR standard for publication) to filter
+tighter without rerunning percolator. (Run this from inside
+`mac_linux/scripts/` or `windows/scripts/`.)
 
 This writes one file per run into `moff_input/` (e.g. `1.txt`, `2.txt`),
 named to match each run's mzML filename — moFF requires that exact naming
 convention. Retention times are read directly out of each mzML file by
 scan number rather than trusted from crux's output, so this works
-regardless of crux version.
+regardless of crux version. The script also prints how many PSMs were
+filtered out by q-value vs. written, so you can see at a glance whether
+your threshold left you anything to quantify.
 
 ## 6.2 Step B: run moFF
 

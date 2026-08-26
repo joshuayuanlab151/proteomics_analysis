@@ -30,15 +30,52 @@ index for every sample searched against that database.
 ```
 
 You can pass one or many `.mzML` files at once — passing several samples
-together is fine and normal (with `--concat T`, they all end up in a
-single combined `tide-search.txt`, tagged by which file each match came
-from).
+together is fine and normal. There's no special flag for this: crux's
+own usage text describes it as `crux tide-search [options] <tide spectra
+file> <tide database>`, where *"multiple files can be included on the
+command line (space delimited), prior to the name of the database"* —
+that's exactly what `/path/to/mzML/*.mzML` above does (the shell expands
+the glob into however many space-separated filenames match, before
+`03_tide_search.sh` appends the database path after them). With
+`--concat T`, they all end up in a single combined `tide-search.txt`,
+tagged by which file each match came from — `03_tide_search.sh` sets
+this by default.
 
 **This is the slowest step of the pipeline.** For a database with a few
 thousand proteins and several runs, budget anywhere from tens of minutes
 to a few hours depending on your computer and how many spectra you're
 searching. Let it run in the background if needed — there's no need to
 babysit it.
+
+## 4.2.1 `--mz-bin-width`: match this to your instrument's resolution
+
+`03_tide_search.sh` currently hardcodes `--mz-bin-width 1.0005079`.
+**This is only correct for low-resolution ion trap MS2 data (CID
+fragmentation).** Straight from crux's own `--help` text: *"For low
+resolution ion trap ms/ms data 1.0005079 and for high resolution ms/ms
+0.02 is recommended. Default = 0.02."* — note that crux's actual default
+is the **high-res** value, not `1.0005079`; easy to get backwards (this
+doc used to). `1.0005079` is used here because this pipeline's own
+bundled example data really is low-resolution ion trap — verified, not
+assumed. **If your own data is high-resolution (Orbitrap/HCD fragmentation),
+edit the script to use `--mz-bin-width 0.02` instead** — using the
+low-res bin width on high-res data throws away real discriminating power
+in the search.
+
+**Check which one your data actually is, rather than guessing:**
+ThermoRawFileParser embeds the instrument's own per-scan description
+(cvParam `MS:1000512`, "filter string") in the mzML. `FTMS` = Orbitrap/FT
+(high-res); `ITMS` = ion trap (low-res):
+```bash
+grep -o 'accession="MS:1000512" value="[^"]*"' yourfile.mzML \
+    | sed 's/.*value="//;s/"$//' | cut -c1-4 | sort | uniq -c
+```
+Some methods deliberately mix modes (high-res MS1 survey + fast low-res
+MS2) — check what your MS2 scans specifically are, since that's what
+`--mz-bin-width` actually discretizes. Crux can also estimate this itself
+instead of you setting it by hand: `--auto-mz-bin-width warn` (falls back
+to the default if estimation fails) or `fail` (errors instead of silently
+guessing wrong).
 
 ## 4.3 What comes out
 

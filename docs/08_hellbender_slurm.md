@@ -131,8 +131,14 @@ not just a theoretical fix:
    need only glibc 2.14, comfortably under Hellbender's 2.28. (Bioconda's
    *newest* crux build, 4.2, has the same glibc-2.29 problem as the direct
    download and does **not** work here; 4.1 does. Both were released the
-   same day with an identical CLI, so this doesn't cost you anything
-   functionally.)
+   same day with an identical CLI.) **This gets you running fast, but on
+   crux 4.1 — two releases behind the current 4.3, with known bugs of its
+   own (see below and doc 7). It's a stopgap, not the recommended end
+   state: if you can spare 30-90 minutes, build 4.3 from source instead
+   (`build_crux_from_source.slurm`, see 8.6 below) — using the current
+   release is best practice, and the
+   old-glibc problem that forces this fallback in the first place doesn't
+   apply to a source build.**
 3. It replaces `software/crux/bin/crux` with a small wrapper script that
    activates that conda environment and runs the real `crux` — and that
    wrapper loads the `miniconda3` module itself if `conda` isn't already
@@ -143,6 +149,14 @@ not just a theoretical fix:
    shell, including inside a SLURM job. `00_setup_environment.sh`'s final
    "Setup complete" message tells you which backend ended up installed.
 
+**One more thing specific to this tier:** the pinned build is crux
+**4.1** (2021) — old enough that `crux tide-search` can fail with
+`Invalid cvParam accession "..."` on current ThermoRawFileParser output.
+`03_tide_search.sh` now detects and works around this automatically (see
+[doc 7](07_troubleshooting.md#fatal-an-exception-occurred-invalid-cvparam-accession-1003096-or-similar-from-crux-tide-search)
+for what it does and why) — you shouldn't need to do anything, but if you
+ever see that exact error message, that's where to look.
+
 If setup ever gets interrupted partway, or you want to force a clean
 reinstall of just crux, delete it and re-run:
 ```bash
@@ -150,25 +164,34 @@ rm -f $HOME/data/proteomics_pipeline_course/mac_linux/software/crux/bin/crux
 ./00_setup_environment.sh
 ```
 
-On the rare chance the conda fallback fails for some other reason on your
-account, the script automatically tries running crux inside a
-Singularity/Apptainer container next (needs Singularity/Apptainer enabled
-for your account — Hellbender describes this as "limited support ... for
-advanced users"; if missing, email `itrss-support@umsystem.edu`), and as
-a last resort prints instructions for compiling crux from source (a real,
-slow build, and on Hellbender specifically may be blocked entirely if
-`svn` isn't available even as a module — see the SLURM template in the
-next section). See
+If the conda fallback fails for some other reason on your account, the
+script automatically tries running crux inside a Singularity/Apptainer
+container next (needs Singularity/Apptainer enabled for your account —
+Hellbender describes this as "limited support ... for advanced users"; if
+missing, email `itrss-support@umsystem.edu`), and after that prints
+instructions for compiling crux from source (a real, slow build — see the
+SLURM template in the next section; note that despite what crux's own
+`INSTALL` file says, `svn` is not actually needed, confirmed by tracing
+the real build config). See
 [doc 7](07_troubleshooting.md#crux-libm-so6-version-glibc_229-not-found-common-on-hellbender--older-hpc-linux)
 for the full details on all of this.
+
+**But don't wait for a failure to consider the source build.** The conda
+fallback (tier 2) works, but leaves you on crux 4.1 — best practice is
+the current release (4.3), which on Hellbender means the source-build
+route below, not the automatic conda fallback. If you have 30-90 minutes
+to spare, run `build_crux_from_source.slurm` even when tier 2 succeeded
+on its own.
 
 ## 8.6 Using the SLURM templates
 
 `mac_linux/scripts/slurm/` has one `.slurm` file per pipeline step, plus
 `submit_all.sh` which submits all of them as a **dependency chain** (each
 step only starts after the previous one succeeds). There's also a
-standalone `build_crux_from_source.slurm`, not part of that chain — only
-needed if doc 8.5's crux fallbacks both failed (see above).
+standalone `build_crux_from_source.slurm`, not part of that chain — the
+recommended way to get the current crux release (4.3) on Hellbender (see
+8.5 above), and also your path forward if doc 8.5's automatic conda/
+container fallbacks failed outright.
 
 ```bash
 cd $HOME/data/proteomics_pipeline_course/mac_linux/scripts/slurm

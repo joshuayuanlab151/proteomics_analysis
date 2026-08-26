@@ -63,8 +63,19 @@ us into this mess.)*
 
 **Tier 2 (automatic): install crux from bioconda, pinned to the 4.1
 build** (`conda create -n crux-fallback -c bioconda
-crux-toolkit=4.1=h503566f_3`) — this is what actually fixes it on
-Hellbender. The pinned build number matters here: bioconda's *newest*
+crux-toolkit=4.1=h503566f_3`) — this gets crux running immediately and
+automatically, no manual steps needed. **It is not the recommended
+end state, though:** 4.1 is two releases behind the current 4.3 and has
+known bugs of its own (see the CV-term entry below, which this tier's
+wrapper works around by sanitizing mzML files rather than fixing at the
+source). **If you can spare the 30-90 minutes, prefer Tier 4 (source
+build) below, which gets you the actual current release (4.3)** — best
+practice is to run the newest crux version you can, not settle for
+whatever came up first. Tier 2 exists so you're not blocked while you
+decide whether to invest that time, and remains a reasonable choice for
+a quick one-off run.
+
+The pinned build number matters here: bioconda's *newest*
 crux-toolkit build (4.2) has the exact same problem as the direct
 download — it happened to get compiled on a newer CI base image, even
 though 4.1 and 4.2 are sibling releases (tagged 8 minutes apart, same
@@ -102,22 +113,33 @@ this tier fails because neither command/module can be found, email
 `itrss-support@umsystem.edu` and ask them to confirm Singularity/Apptainer
 is enabled on your account.
 
-**Tier 4 (manual, last resort): build crux from source.** Compiling crux
+**Tier 4 (manual, recommended over Tier 2 when you have the time): build
+crux from source.** This is how you get the current release (4.3) working
+on Hellbender — the only tier that does. Compiling crux
 against the system's own compiler and libraries sidesteps the glibc
 mismatch entirely, by construction. This is a real C++ build, though, not
-"download and unzip": it needs `cmake`, `svn` (crux's default build
-fetches ProteoWizard as a tarball, not SVN — see the CMake logic in
-`ext/CMakeLists.txt` — but `INSTALL` still lists both `cmake` and `svn` as
-prerequisites, so treat both as required until proven otherwise), a C++
-compiler, and system development headers (openssl, zlib, libcurl,
-libuuid, libpulse). On a shared HPC system, some of these may only exist
-as versioned environment modules (e.g. `cmake/3.26.3_gcc_9.5.0`, not bare
-`cmake`) rather than on `PATH` by default, and if `svn` isn't available as
-a module or system package at all, a non-root user can't add it —
-`build_crux_from_source.sh` can't do anything about that case; ask your
-HPC's support team. It can also take 30-90+ minutes with continuous
-network access, so run it as its own multi-hour SLURM job — **not**
-inside the short interactive session used for normal setup:
+"download and unzip": it needs `cmake`, a C++ compiler, and system
+development headers (openssl, zlib, libcurl, libuuid, libpulse). On a
+shared HPC system, some of these may only exist as versioned environment
+modules (e.g. `cmake/3.26.3_gcc_9.5.0`, not bare `cmake`) rather than on
+`PATH` by default.
+
+**Despite what crux's own generic `INSTALL` file says, `svn`/subversion
+is NOT actually required.** Confirmed by tracing the entire default build
+chain (top-level `CMakeLists.txt` → `ext/CMakeLists.txt` →
+`download_pwiz.cmake` → `build_pwiz.cmake`) end to end: zero
+svn/subversion references anywhere in it. ProteoWizard is fetched via a
+plain HTTPS URL (a pre-packaged source tarball), not an SVN checkout —
+the `INSTALL` file's mention of svn is almost certainly a stale holdover
+from when crux's own source lived on SourceForge SVN, not an actual
+build-time dependency of the current CMake-based build.
+`build_crux_from_source.sh` no longer checks for it. If you were
+previously told (by this doc, in an earlier version) that missing `svn`
+blocks this tier — it doesn't; try again.
+
+It can also take 30-90+ minutes with continuous network access, so run it
+as its own multi-hour SLURM job — **not** inside the short interactive
+session used for normal setup:
 ```bash
 cd $HOME/data/proteomics_pipeline_course/mac_linux/scripts/slurm
 mkdir -p logs
@@ -142,13 +164,16 @@ directly, same as if it were the real binary. `00_setup_environment.sh`'s
 final "Setup complete" message also reports which backend is actually
 running, by inspecting `software/crux/bin/crux` itself.
 
-Tiers 2-4 all end up using crux **4.1/4.2** instead of **4.3**. That's
-fine for this pipeline specifically: `05_percolator_to_moff.py` computes
-retention time itself directly from the mzML files rather than relying on
-tide-search's 4.3-only `retention time` column, so the moFF-bound output
-is identical either way. (Tier 4's source build, if you ever need it, can
-build any version including 4.3 — edit `CRUX_VERSION` in
-`build_crux_from_source.sh` to match.)
+Tiers 2 and 3 end up using crux **4.1/4.2** instead of the current
+**4.3** — only Tier 4's source build gets you 4.3 on Hellbender. For this
+pipeline's own moFF-bound output, the version gap happens to be low-risk:
+`05_percolator_to_moff.py` computes retention time itself directly from
+the mzML files rather than relying on tide-search's 4.3-only
+`retention time` column, so that specific output is identical either way.
+That's a reason not to panic if you're stuck on Tier 2 for now, not a
+reason to prefer it — general bug fixes between 4.1 and 4.3 (like the
+CV-term issue above) still only get fixed by actually running 4.3, so
+Tier 4 remains the recommended target when you have the time for it.
 
 If setup was interrupted partway through, or you want to force it to
 retry, just delete `software/crux/bin/crux` and re-run
@@ -162,6 +187,62 @@ check `software/crux/bin/crux` — a real downloaded/built binary is
 several MB, a fallback wrapper is a tiny few-line shell script, and
 `conda list -n crux-fallback crux-toolkit` (if tier 2) will show the
 exact installed version.
+
+## `FATAL: An exception occurred: Invalid cvParam accession "1003096"` (or similar) from `crux tide-search`
+
+A direct consequence of the tier 2 (conda) fallback above, not a separate
+bug: the pinned bioconda build is **crux 4.1, from October 2021**. Its
+bundled mzML parser only recognizes CV (controlled vocabulary) terms that
+existed in the PSI-MS ontology as of that date. Current
+ThermoRawFileParser writes a couple of terms that didn't exist yet in
+2021, and crux 4.1 hard-fails on any accession it doesn't recognize
+rather than skipping it.
+
+**Confirmed for real, exhaustively, on actual Hellbender data:** exactly
+two such terms show up, and only two — `MS:1003096` (the specific
+instrument model, e.g. "LTQ Orbitrap Velos Pro") and `MS:1003145`
+(ThermoRawFileParser identifying itself as the conversion software).
+Both are one-off, file-level metadata that appears exactly once per file
+(inside `referenceableParamGroupList` and `softwareList` respectively) —
+**not** something that recurs per-spectrum, so this isn't an open-ended
+problem despite how alarming a bare "invalid accession" error looks.
+Checked directly (`grep -o 'accession="MS:100[3-9][0-9]*"' yourfile.mzML
+| sort -u`) against every peak/spectrum-level field (the ones appearing
+thousands of times — m/z arrays, filter strings, scan times, etc.) and
+they're all long-standing `1000xxx`-range terms, comfortably older than
+crux 4.1.
+
+**`03_tide_search.sh` handles this automatically now:** it detects the
+tier 2 conda-fallback crux (same detection used elsewhere: checking for
+`crux-fallback` in the wrapper script) and, only in that case, searches
+*sanitized copies* of your mzML files instead of the originals — your
+real converted mzML files are never modified. The two known terms are
+patched: `MS:1003096` is removed outright (pure descriptive metadata,
+safe to drop), and `MS:1003145` is replaced with the long-standing,
+generic `MS:1000799` ("custom unreleased software tool", whose own
+definition literally says "the value should describe the software") with
+`value="ThermoRawFileParser"` — swapped rather than deleted, since it's
+the only cvParam in its `<software>` element and is referenced elsewhere
+via `softwareRef`, so deleting it risked trading this error for a
+different structural one. This has **not** been verified against a real
+run of crux 4.1 (no crux 4.1 available to test outside Hellbender itself)
+— it's verified to be well-formed XML with the correct structure and a
+semantically appropriate substitute term, and crux tide-search doesn't
+use the mzML's own internal `<indexList>` (it converts to its own
+internal "spectrumrecords" format), so editing header bytes ahead of that
+index is harmless for this specific use.
+
+If you still hit an "Invalid cvParam accession" error after this fix (a
+different accession number), that means a third term exists that wasn't
+in this dataset's files — report the exact number and where in the file
+it appears (`grep -n 'accession="MS:<the number>"' yourfile.mzML`) so it
+can be patched precisely rather than guessed at, the same way the first
+two were found and confirmed.
+
+If you're not on tier 2 (i.e. `crux -v` shows something other than
+`4.1-...-2021...`), this doesn't apply to you at all — this is
+specifically a byproduct of the old crux 4.1 build, not a general crux or
+ThermoRawFileParser problem.
 
 ## A `crux-output` folder keeps appearing in `scripts/`
 
@@ -248,6 +329,13 @@ marked that particular acquisition as cleanly finished, typically because
 the run was stopped early/aborted, or the file was copied off the
 instrument before Xcalibur finished writing/closing it.
 
+**`01_convert_raw_to_mzml.sh` skips a file that fails like this and keeps
+converting the rest of the batch** — it doesn't stop the whole run over
+one flagged file. At the end it prints a summary of any files that failed
+and were skipped, and each file's full output is saved to
+`<mzml_dir>/<name>.convert.log` for reference. The rest of the pipeline
+then runs normally on whichever files did convert successfully.
+
 There is no supported command-line flag to force past this check (it's not
 gated by `--ignoreInstrumentErrors`). Options:
 
@@ -260,6 +348,112 @@ gated by `--ignoreInstrumentErrors`). Options:
 - If you have access to Proteome Discoverer / Xcalibur on the acquiring
   instrument's Windows PC, re-exporting a copy from there sometimes
   resolves the flag.
+
+## `WARN Spectrum #N has no m/z data` during RAW→mzML conversion
+
+Traced directly to ThermoRawFileParser's source
+(`Writer/MzMlSpectrumWriter.cs`): it logs this whenever a specific scan's
+peak array comes back empty (`mzData.masses.Length == 0`) — i.e. spectrum
+`#N` in your RAW file genuinely has zero detected peaks. This is normal
+instrument behavior, not file corruption or a parser bug: it usually
+means a data-dependent MS2 scan got triggered on a precursor that turned
+out to have no significant fragment ion signal above threshold. The
+spectrum still gets written to the mzML (as an empty spectrum) rather
+than the conversion failing.
+
+**A handful of these among thousands of spectra is normal** — those scans
+just won't identify anything in tide-search, same as any other low-quality
+spectrum, and cost you nothing else. Only worth investigating if a large
+fraction of spectra warn like this, which points at a different, real
+problem instead.
+
+`01_convert_raw_to_mzml.sh` now does this check for you automatically:
+it saves each conversion's output to `<mzml_dir>/<name>.convert.log`
+alongside the mzML file, and prints a one-line summary (count of empty
+spectra out of the total) right after each file finishes converting if
+any showed up. To check by hand, e.g. for an older log or a manual
+conversion:
+```bash
+grep -c "has no m/z data" your_output_dir/yourfile.convert.log
+grep -c '<spectrum id=' your_output_dir/yourfile.mzML
+```
+Checking the mzML directly (`defaultArrayLength="0"` is the exact
+condition that triggers the warning) works even without a saved log:
+```bash
+grep -c 'defaultArrayLength="0"' yourfile.mzML
+```
+If most spectra are affected, that's more likely the "still being
+acquired" / near-empty file issue above, not this one — check file size
+and total spectrum count before assuming the RAW file itself is fine.
+
+### It's more than "a handful" (e.g. 5-10%+) — is that actually a problem?
+
+The total count alone can't tell you that — what matters is **which MS
+level** the empty spectra are.
+
+`check_mzml_ms_levels.py` (in `mac_linux/scripts/` and `windows/scripts/`,
+identical) breaks the count down by MS level so you can tell which case
+you're in:
+```bash
+conda activate proteomics
+python3 check_mzml_ms_levels.py yourfile.mzML
+```
+```
+yourfile.mzML:
+  MS1: 0/1203 empty (0.0%)
+  MS2: 1011/9075 empty (11.1%)
+```
+
+**Empty MS2 at this kind of rate is normal.** Aggressive data-dependent
+acquisition (e.g. Top20/Top30 methods) routinely triggers fragmentation
+on precursors that turn out to be near the noise floor, and
+low-abundance/complex real samples can easily produce a 5-15% empty-MS2
+rate without anything being wrong.
+
+**Empty MS1 needs a closer look than the flat percentage gives you.** We'd
+originally written that MS1 scans should essentially never be empty and a
+high rate always means a real acquisition problem, then found real
+counter-examples in this pipeline's own original 12-file test set (several
+files with 18-77% empty MS1, clean MS2) that seemed to contradict that.
+But looking at *where in the run* those empty scans actually fall settled
+it — `check_mzml_ms_levels.py` now reports this automatically whenever
+MS1 empty rate is >=5%:
+```
+  MS1: 3459/5039 empty (68.5%)  <-- worth a closer look, see retention-time breakdown below
+  MS1 empty rate by retention time (2-min bins):
+       0.0-  2.0 min:    0/  29 empty (  0.0%)
+       ...
+       6.0-  8.0 min:  239/ 261 empty ( 91.6%) ##################
+       8.0- 10.0 min:  658/ 669 empty ( 98.4%) ###################
+      10.0- 12.0 min:  656/ 670 empty ( 97.9%) ###################
+      ...
+      16.0- 18.0 min:  587/ 635 empty ( 92.4%) ##################
+      18.0- 20.0 min:    0/  30 empty (  0.0%)
+       ... (clean for the rest of a 110-minute run)
+```
+Two genuinely different patterns, and they mean different things:
+
+- **Empty MS1 clustered at the very start and/or end of the run** —
+  plausibly dead time (column equilibration before the gradient moves
+  analyte, wash/re-equilibration after) — benign.
+- **A sharp, contiguous block of empty MS1 in the MIDDLE of the run,
+  clean before it and clean after it** (the real example above) — this is
+  **not** dead time. Two different files in this pipeline's own test data
+  showed almost exactly this pattern, in a similar retention-time window
+  (~6-24 min), both bounded by long stretches of completely normal signal
+  on either side. That points at a real, temporary acquisition event
+  during that specific window — most plausibly an electrospray/ion-source
+  dropout (clogged needle, air bubble, voltage instability) that
+  self-resolved — not something to shrug off. Practically: anything that
+  should have eluted during that window is essentially invisible for MS1
+  quantification in that specific run. Worth flagging to whoever ran the
+  acquisition, and worth deciding whether that run needs to be excluded or
+  re-acquired if completeness in that RT range matters for your study.
+
+Either way, this is diagnostic information for you to act on, not
+something the pipeline itself filters or excludes automatically — a file
+with a bad window like this still gets searched/quantified like any
+other; nothing downstream treats it specially.
 
 ## moFF reports "Peak not detected" / 0 retrieved peaks for every single peptide
 
@@ -339,10 +533,59 @@ Usually one of:
 1. Wrong or mismatched database (wrong organism, or FASTA doesn't
    correspond to your sample).
 2. Too strict an FDR for a very small test/database (the bundled example
-   database is intentionally tiny — 22 proteins — so don't expect large
-   numbers of hits from it).
+   database is intentionally tiny — 22 real proteins, 138 once the
+   required contaminant sequences are added, see doc 2.4 — so don't
+   expect large numbers of hits from it).
 3. A modification setting mismatch, e.g. `--mods-spec C+57.02146` assumes
    cysteine alkylation was performed; if it wasn't, remove that flag when
    rebuilding the index.
 4. The RAW→mzML conversion silently produced near-empty files — check file
    sizes (doc 3.3) before assuming the search itself is broken.
+
+## `percolator.target.psms.txt` has thousands of rows — is that all "confident"?
+
+**No.** This tripped us up too: despite `04_percolator.sh` setting
+`--test-fdr`/`--train-fdr`, `percolator.target.psms.txt` is **not**
+filtered down to confident matches — percolator uses those FDR values to
+*train* its scoring model, but still writes out every single target PSM
+with a `q-value` column, whatever that value ends up being. A file with
+thousands of rows can easily have zero rows that actually pass any
+reasonable FDR threshold.
+
+The actual filtering happens in the next step, `05_percolator_to_moff.py`'s
+`--max-q-value` (default `0.1`, matching `04_percolator.sh`'s default) —
+see docs 5.1/5.3/6.1. Before this was added, the pipeline was silently
+passing every unfiltered PSM through to moFF for quantification, which
+defeats the entire point of running percolator. Check
+`Total PSMs written: X, skipped: Y (+ Z filtered out by q-value > ...)`
+in that script's output to see how many actually survived filtering.
+
+## `TypeError: float() argument must be a string or a number, not 'NoneType'` from `05_percolator_to_moff.py`
+
+Traced to a real, previously-latent bug found while testing against real
+data: **if your input FASTA (or the database prep step's contaminants
+file) has Windows-style CRLF line endings**, the stray `\r` characters
+get indexed by crux as part of the actual protein sequences and end up
+embedded inside tryptic peptides at line-wrap boundaries. Downstream,
+that `\r` lands inside a field of `percolator.target.psms.txt` (typically
+inside a peptide sequence, right after the trailing `.` before the next
+tab). Python's `csv` module treats a lone `\r` as a row terminator, so it
+silently splits that one real row into two bogus ones — a garbled
+short row with mostly-empty fields, which then breaks `float(row["q-value"])`.
+
+You'd also have seen a symptom earlier, at the indexing step:
+`INFO: Ignoring N peptide sequences containing unrecognized characters`
+from `crux tide-index` — that N is exactly the CRLF damage, and is your
+earliest warning something's wrong with the input FASTA's line endings.
+
+**`02_build_database_index.sh` fixes this automatically** (both tracks,
+as of this fix): it strips `\r` from both your input FASTA and the
+bundled contaminants FASTA (`tr -d '\r'`) before doing anything else with
+them, so this shouldn't happen anymore even if your source FASTA has CRLF
+endings — which is common (UniProt exports, Windows-authored files; this
+pipeline's own original test database had this exact issue). If you ever
+reinstall/rebuild a database index by hand instead of via the script,
+remember to strip `\r` yourself first:
+```bash
+tr -d '\r' < your_database.fasta > your_database_clean.fasta
+```
